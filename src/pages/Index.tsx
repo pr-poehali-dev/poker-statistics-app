@@ -66,7 +66,7 @@ const Index = () => {
   // New game form state
   const [newGameForm, setNewGameForm] = useState({
     name: "",
-    players: "",
+    players: [] as string[],
     chipToRuble: 0.5,
     startingStack: 5000,
     smallBlind: 25,
@@ -99,27 +99,44 @@ const Index = () => {
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const addPlayer = () => {
+    setNewGameForm({ ...newGameForm, players: [...newGameForm.players, ""] });
+  };
+
+  const updatePlayer = (index: number, name: string) => {
+    const updatedPlayers = [...newGameForm.players];
+    updatedPlayers[index] = name;
+    setNewGameForm({ ...newGameForm, players: updatedPlayers });
+  };
+
+  const removePlayer = (index: number) => {
+    const updatedPlayers = newGameForm.players.filter((_, i) => i !== index);
+    setNewGameForm({ ...newGameForm, players: updatedPlayers });
+  };
+
   const createGame = () => {
-    const playerList = newGameForm.players
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p);
+    const validPlayers = newGameForm.players.filter((p) => p.trim());
+    if (!newGameForm.name || validPlayers.length < 2) return;
+
     const newGame: GameData = {
       id: Date.now().toString(),
       name: newGameForm.name,
-      players: playerList,
+      players: validPlayers,
       chipToRuble: newGameForm.chipToRuble,
       startingStack: newGameForm.startingStack,
       smallBlind: newGameForm.smallBlind,
       bigBlind: newGameForm.bigBlind,
       isActive: false,
       rounds: [],
-      buyins: playerList.reduce((acc, player) => ({ ...acc, [player]: 1 }), {}),
+      buyins: validPlayers.reduce(
+        (acc, player) => ({ ...acc, [player]: 1 }),
+        {},
+      ),
     };
     setGames([...games, newGame]);
     setNewGameForm({
       name: "",
-      players: "",
+      players: [],
       chipToRuble: 0.5,
       startingStack: 5000,
       smallBlind: 25,
@@ -314,14 +331,46 @@ const Index = () => {
                 }
                 className="bg-poker-dark border-poker-gold/30"
               />
-              <Textarea
-                placeholder="Игроки (через запятую)"
-                value={newGameForm.players}
-                onChange={(e) =>
-                  setNewGameForm({ ...newGameForm, players: e.target.value })
-                }
-                className="bg-poker-dark border-poker-gold/30"
-              />
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="text-white text-sm">Игроки</Label>
+                  <Button
+                    type="button"
+                    onClick={addPlayer}
+                    size="sm"
+                    className="bg-poker-green hover:bg-poker-green/80"
+                  >
+                    <Icon name="Plus" size={16} className="mr-1" />
+                    Добавить
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {newGameForm.players.length === 0 && (
+                    <p className="text-gray-400 text-sm text-center py-3">
+                      Нажмите "Добавить" чтобы добавить игроков
+                    </p>
+                  )}
+                  {newGameForm.players.map((player, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder={`Игрок ${index + 1}`}
+                        value={player}
+                        onChange={(e) => updatePlayer(index, e.target.value)}
+                        className="bg-poker-dark border-poker-gold/30 flex-1"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => removePlayer(index)}
+                        size="sm"
+                        variant="outline"
+                        className="border-poker-red text-poker-red hover:bg-poker-red/10"
+                      >
+                        <Icon name="X" size={16} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label className="text-white text-sm">
@@ -387,10 +436,14 @@ const Index = () => {
               </div>
               <Button
                 onClick={createGame}
-                disabled={!newGameForm.name || !newGameForm.players}
+                disabled={
+                  !newGameForm.name ||
+                  newGameForm.players.filter((p) => p.trim()).length < 2
+                }
                 className="w-full bg-poker-green hover:bg-poker-green/80"
               >
-                🚀 Создать игру
+                🚀 Создать игру (
+                {newGameForm.players.filter((p) => p.trim()).length} игроков)
               </Button>
             </CardContent>
           </Card>
@@ -833,160 +886,276 @@ const Index = () => {
     const bestDealerStats = getBestDealerStats();
     const { chips, rubles } = getTotalChips();
 
+    // Данные для столбчатых диаграмм комбинаций
+    const combinationBarStats = combinationStats.map((stat) => ({
+      name: stat.name,
+      value: stat.value,
+      percentage: currentGame?.rounds.length
+        ? Math.round((stat.value / currentGame.rounds.length) * 100)
+        : 0,
+    }));
+
     return (
-      <div className="min-h-screen bg-poker-dark p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
-            <h1 className="text-2xl md:text-3xl font-montserrat font-bold text-poker-gold flex items-center gap-2">
-              📊 {currentGame?.name || "Дашборд игры"}
-            </h1>
-            <div className="flex gap-2">
+      <div className="min-h-screen" style={{ backgroundColor: "#000000" }}>
+        <div className="max-w-7xl mx-auto p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                <Icon name="Trophy" size={20} className="text-white" />
+              </div>
+              <h1 className="text-white text-2xl font-bold">Lozo Poker</h1>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setCurrentView("dashboard")}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+              >
+                Дашборд
+              </Button>
               <Button
                 onClick={() => setCurrentView("admin")}
                 variant="outline"
-                className="border-poker-gold text-poker-gold text-sm"
+                className="border-gray-600 text-gray-300 hover:bg-gray-800 px-4 py-2 rounded-md"
               >
-                ⚙️ Админ
-              </Button>
-              <Button
-                onClick={() => setCurrentView("lobby")}
-                variant="outline"
-                className="border-poker-gold text-poker-gold text-sm"
-              >
-                🏠 Лобби
+                Админ панель
               </Button>
             </div>
           </div>
 
+          <h2 className="text-white text-3xl font-bold mb-8">Dashboard</h2>
+
+          <Button
+            onClick={() => setCurrentView("admin")}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md mb-8 float-right"
+          >
+            🔧 Сбросить настройки
+          </Button>
+
+          {/* Верхние карточки статистики */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardContent className="p-6 text-center">
-                <h3 className="text-poker-gold font-semibold mb-2">
-                  🎯 Раундов сыграно
-                </h3>
-                <p className="text-3xl md:text-4xl font-bold text-white">
-                  {currentGame?.rounds.length || 0}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Всего фишек</p>
+                  <p className="text-white text-2xl font-bold">
+                    {(chips / 1000000).toFixed(1)}M
+                  </p>
+                  <p className="text-green-400 text-xs">
+                    {rubles.toFixed(0)} Р
+                  </p>
+                </div>
+                <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
+                  <Icon name="Trophy" size={16} className="text-white" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <span className="text-green-400 text-xs">📈 +8%</span>
+              </div>
+            </div>
 
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardContent className="p-6 text-center">
-                <h3 className="text-poker-gold font-semibold mb-2">
-                  💰 Фишек в игре
-                </h3>
-                <p className="text-xl md:text-2xl font-bold text-white">
-                  {chips.toLocaleString()}
-                </p>
-                <p className="text-sm text-gray-400">≈ {rubles.toFixed(0)}₽</p>
-              </CardContent>
-            </Card>
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Всего раундов</p>
+                  <p className="text-white text-2xl font-bold">
+                    {currentGame?.rounds.length || 0}
+                  </p>
+                </div>
+                <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
+                  <Icon name="Target" size={16} className="text-white" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <span className="text-green-400 text-xs">📈 +12%</span>
+              </div>
+            </div>
 
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardContent className="p-6 text-center">
-                <h3 className="text-poker-gold font-semibold mb-2">
-                  ⏱️ Время игры
-                </h3>
-                <p className="text-2xl md:text-3xl font-bold text-white font-mono">
-                  {formatTime(gameTimer)}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Время игры</p>
+                  <p className="text-white text-2xl font-bold">
+                    {formatTime(gameTimer)}
+                  </p>
+                  {currentGame && (
+                    <p className="text-gray-400 text-xs">
+                      Блайнды: {currentGame.smallBlind}/{currentGame.bigBlind}
+                    </p>
+                  )}
+                </div>
+                <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
+                  <Icon name="Clock" size={16} className="text-white" />
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardHeader>
-                <CardTitle className="text-poker-gold">
-                  🏆 Гистограмма победителей
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {winnerStats.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={winnerStats}>
-                        <XAxis dataKey="name" stroke="#D4A428" />
-                        <YAxis stroke="#D4A428" />
-                        <Bar
-                          dataKey="wins"
-                          fill="#D4A428"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <p className="text-gray-400 text-center py-20">
-                    Нет данных о раундах
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardHeader>
-                <CardTitle className="text-poker-gold">
-                  🃏 Победные комбинации
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {combinationStats.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={combinationStats}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={100}
-                          dataKey="value"
-                        >
-                          {combinationStats.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <p className="text-gray-400 text-center py-20">
-                    Нет данных о комбинациях
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {Object.keys(bestDealerStats).length > 0 && (
-            <Card className="bg-poker-gray border-poker-gold/20">
-              <CardHeader>
-                <CardTitle className="text-poker-gold">
-                  🎰 Лучшие дилеры для каждого игрока
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(bestDealerStats).map(([player, stats]) => (
-                    <div
-                      key={player}
-                      className="p-4 bg-poker-dark rounded-lg border border-poker-gold/30"
-                    >
-                      <h3 className="text-white font-semibold mb-2">
-                        {player}
-                      </h3>
-                      <p className="text-poker-gold">
-                        Лучший дилер: {stats.dealers.join(" / ")}
+          {/* Основные диаграммы */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            {/* Топ победителей */}
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon name="Crown" size={20} className="text-yellow-500" />
+                <h3 className="text-white text-lg font-semibold">
+                  Топ победителей
+                </h3>
+              </div>
+              <div className="space-y-4">
+                {winnerStats.slice(0, 5).map((player, index) => (
+                  <div key={player.name} className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-yellow-600 rounded-full flex items-center justify-center text-xs text-white font-bold">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white text-sm font-medium">
+                        {player.name}
                       </p>
-                      <p className="text-gray-400 text-sm">
-                        Побед с этим дилером: {stats.wins} ({stats.percentage}%)
+                      <div className="w-full bg-gray-700 rounded-full h-2 mt-1">
+                        <div
+                          className="bg-yellow-500 h-2 rounded-full transition-none"
+                          style={{ width: `${player.percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white text-sm font-bold">
+                        {player.wins} побед
+                      </p>
+                      <p className="text-green-400 text-xs">
+                        {player.percentage}%
                       </p>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Выигрышные комбинации */}
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon name="Star" size={20} className="text-green-500" />
+                <h3 className="text-white text-lg font-semibold">
+                  Выигрышные комбинации
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {combinationBarStats.slice(0, 9).map((combo, index) => {
+                  const colors = [
+                    "bg-green-500",
+                    "bg-green-400",
+                    "bg-green-300",
+                    "bg-green-200",
+                    "bg-gray-500",
+                  ];
+                  const color = colors[index % colors.length];
+                  return (
+                    <div
+                      key={combo.name}
+                      className="flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className="text-white text-sm w-24 truncate">
+                          {combo.name}
+                        </span>
+                        <div className="flex-1 max-w-24">
+                          <div className="w-full bg-gray-700 rounded-full h-2">
+                            <div
+                              className={`${color} h-2 rounded-full transition-none`}
+                              style={{ width: `${combo.percentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right ml-3">
+                        <span className="text-white text-sm font-bold">
+                          {combo.value}
+                        </span>
+                        <span className="text-green-400 text-xs ml-2">
+                          {combo.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Комментарии к раундам */}
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon
+                  name="MessageSquare"
+                  size={20}
+                  className="text-orange-500"
+                />
+                <h3 className="text-white text-lg font-semibold">
+                  Комментарии к раундам
+                </h3>
+              </div>
+              <div className="space-y-4">
+                {currentGame?.rounds
+                  .slice(-3)
+                  .reverse()
+                  .map((round, index) => (
+                    <div key={round.id} className="">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded">
+                          Раунд #{currentGame.rounds.length - index}
+                        </span>
+                        <span className="text-gray-400 text-xs">
+                          {new Date(round.timestamp).toLocaleTimeString("ru", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-white text-sm">
+                        {round.comment ||
+                          round.combination + " у " + round.winners.join(", ")}
+                      </p>
+                    </div>
+                  )) || (
+                  <p className="text-gray-400 text-sm text-center py-8">
+                    Нет комментариев к раундам
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Лучшие дилеры */}
+          {Object.keys(bestDealerStats).length > 0 && (
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon name="Users" size={20} className="text-green-500" />
+                <h3 className="text-white text-lg font-semibold">
+                  Лучшие дилеры для игроков
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Object.entries(bestDealerStats).map(([player, stats]) => (
+                  <div
+                    key={player}
+                    className="bg-gray-800 rounded-lg p-4 border border-gray-600"
+                  >
+                    <h4 className="text-white font-medium mb-2">{player}</h4>
+                    <p className="text-green-400 text-sm mb-1">Лучший дилер:</p>
+                    <p className="text-white text-lg font-bold">
+                      {stats.dealers.join(", ")}
+                    </p>
+                    <div className="mt-3">
+                      <span className="text-green-400 text-sm font-bold">
+                        {stats.wins} побед
+                      </span>
+                      <span className="text-gray-400 text-sm ml-4">
+                        {stats.percentage}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>

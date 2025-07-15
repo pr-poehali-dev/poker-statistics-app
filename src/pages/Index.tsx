@@ -154,6 +154,19 @@ const Index = () => {
     return () => clearInterval(interval);
   }, [currentGame]);
 
+  // Состояние таймера
+  const [timerRunning, setTimerRunning] = useState(true);
+  
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (currentGame && currentGame.isActive && timerRunning) {
+      interval = setInterval(() => {
+        setGameTimer(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [currentGame, timerRunning]);
+
   // Format time function
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -528,17 +541,42 @@ const Index = () => {
     );
   };
 
-  // Admin View - обновим стиль под темную тему
+  // Admin View - переработанная с вкладками
   const AdminView = () => {
+    const [activeTab, setActiveTab] = useState("раунд");
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [timerRunning, setTimerRunning] = useState(true);
+    const [finalChips, setFinalChips] = useState<{ [key: string]: number }>({});
+    const [showResults, setShowResults] = useState(false);
+    
+    // Состояние для раундов
     const [currentRound, setCurrentRound] = useState({
       winners: [] as string[],
       dealer: "",
       combination: "",
       comment: "",
     });
+    
+    // Состояние для закупов
+    const [selectedForBuyIn, setSelectedForBuyIn] = useState<string[]>([]);
+    const [buyInAmounts, setBuyInAmounts] = useState<{ [key: string]: number }>({});
+    
+    // Состояние для настроек
+    const [gameSettings, setGameSettings] = useState({
+      name: currentGame?.name || "",
+      smallBlind: currentGame?.smallBlind || 5,
+      bigBlind: currentGame?.bigBlind || 10,
+      startingStack: currentGame?.startingStack || 1000,
+      chipToRuble: currentGame?.chipToRuble || 1,
+    });
+    
+    const [newPlayerName, setNewPlayerName] = useState("");
 
+    if (!currentGame) return null;
+
+    // Функции для раундов
     const addRound = () => {
-      if (currentGame && currentRound.winners.length > 0 && currentRound.dealer && currentRound.combination) {
+      if (currentRound.winners.length > 0 && currentRound.dealer && currentRound.combination) {
         const newRound: Round = {
           id: Date.now().toString(),
           winners: currentRound.winners,
@@ -562,7 +600,89 @@ const Index = () => {
       }
     };
 
-    if (!currentGame) return null;
+    // Функции для закупов
+    const addBuyIns = () => {
+      if (selectedForBuyIn.length > 0) {
+        const newBuyIns = { ...currentGame.buyins };
+        selectedForBuyIn.forEach(player => {
+          newBuyIns[player] = (newBuyIns[player] || 0) + 1;
+        });
+        
+        setCurrentGame(prev => prev ? {
+          ...prev,
+          buyins: newBuyIns
+        } : null);
+        
+        setSelectedForBuyIn([]);
+        setBuyInAmounts({});
+      }
+    };
+
+    // Функции для настроек
+    const updateGameSettings = () => {
+      setCurrentGame(prev => prev ? {
+        ...prev,
+        name: gameSettings.name,
+        smallBlind: gameSettings.smallBlind,
+        bigBlind: gameSettings.bigBlind,
+        startingStack: gameSettings.startingStack,
+        chipToRuble: gameSettings.chipToRuble,
+      } : null);
+    };
+
+    const addPlayerToGame = () => {
+      if (newPlayerName.trim() && !currentGame.players.includes(newPlayerName.trim())) {
+        setCurrentGame(prev => prev ? {
+          ...prev,
+          players: [...prev.players, newPlayerName.trim()],
+          buyins: {
+            ...prev.buyins,
+            [newPlayerName.trim()]: 1
+          }
+        } : null);
+        setNewPlayerName("");
+      }
+    };
+
+    // Функции для итогов
+    const calculateResults = () => {
+      const results = currentGame.players.map(player => {
+        const buyInCount = currentGame.buyins[player] || 0;
+        const buyInChips = buyInCount * currentGame.startingStack;
+        const buyInRubles = buyInChips * currentGame.chipToRuble;
+        const finalChipsAmount = finalChips[player] || 0;
+        const finalRubles = finalChipsAmount * currentGame.chipToRuble;
+        const profit = finalRubles - buyInRubles;
+        
+        return {
+          player,
+          buyInCount,
+          buyInChips,
+          buyInRubles,
+          finalChips: finalChipsAmount,
+          finalRubles,
+          profit
+        };
+      });
+      
+      return results;
+    };
+
+    const finishGame = () => {
+      setCurrentGame(prev => prev ? {
+        ...prev,
+        isActive: false,
+        gameEndTime: new Date()
+      } : null);
+      setShowResults(true);
+    };
+
+    const tabs = [
+      { id: "настройки", name: "Настройки игры", icon: "Settings" },
+      { id: "закупы", name: "Закупы", icon: "CreditCard" },
+      { id: "раунд", name: "Раунд", icon: "Target" },
+      { id: "итоги", name: "Итоги", icon: "Calculator" },
+    ];
 
     return (
       <div className="min-h-screen" style={{backgroundColor: '#000000'}}>
@@ -596,12 +716,12 @@ const Index = () => {
           <p className="text-gray-400 mb-8">Администрирование игры</p>
 
           {/* Game Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm mb-1">Время игры</p>
-                  <p className="text-white text-2xl font-bold">{formatTime(gameTimer)}</p>
+                  <p className="text-white text-xl font-bold">{formatTime(gameTimer)}</p>
                 </div>
                 <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
                   <Icon name="Clock" size={16} className="text-white" />
@@ -609,11 +729,11 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm mb-1">Раунды</p>
-                  <p className="text-white text-2xl font-bold">{currentGame.rounds.length}</p>
+                  <p className="text-white text-xl font-bold">{currentGame.rounds.length}</p>
                 </div>
                 <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
                   <Icon name="Target" size={16} className="text-white" />
@@ -621,11 +741,23 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Игроки</p>
+                  <p className="text-white text-xl font-bold">{currentGame.players.length}</p>
+                </div>
+                <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
+                  <Icon name="Users" size={16} className="text-white" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm mb-1">Блайнды</p>
-                  <p className="text-white text-2xl font-bold">{currentGame.smallBlind}/{currentGame.bigBlind}</p>
+                  <p className="text-white text-xl font-bold">{currentGame.smallBlind}/{currentGame.bigBlind}</p>
                 </div>
                 <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
                   <Icon name="Coins" size={16} className="text-white" />
@@ -634,134 +766,478 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Add Round Form */}
-          <div className="bg-gray-900 rounded-lg p-6 border border-gray-700 mb-8">
-            <h3 className="text-white text-lg font-semibold mb-4">Добавить раунд</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label className="text-white mb-2 block">Победители</Label>
-                <div className="space-y-2">
-                  {currentGame.players.map((player) => (
-                    <div key={player} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`winner-${player}`}
-                        checked={currentRound.winners.includes(player)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setCurrentRound(prev => ({
-                              ...prev,
-                              winners: [...prev.winners, player]
-                            }));
-                          } else {
-                            setCurrentRound(prev => ({
-                              ...prev,
-                              winners: prev.winners.filter(w => w !== player)
-                            }));
-                          }
-                        }}
-                      />
-                      <label htmlFor={`winner-${player}`} className="text-white cursor-pointer">
-                        {player}
-                      </label>
-                    </div>
+          {/* Навигация по вкладкам */}
+          <div className="bg-gray-900 rounded-lg border border-gray-700 mb-8">
+            {/* Мобильное меню */}
+            <div className="md:hidden p-4 border-b border-gray-700">
+              <Button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                variant="outline"
+                className="w-full border-gray-600 text-gray-300 hover:bg-gray-800 justify-between"
+              >
+                <span>{tabs.find(tab => tab.id === activeTab)?.name}</span>
+                <Icon name={isMobileMenuOpen ? "ChevronUp" : "ChevronDown"} size={20} />
+              </Button>
+              {isMobileMenuOpen && (
+                <div className="mt-4 space-y-2">
+                  {tabs.map((tab) => (
+                    <Button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      variant={activeTab === tab.id ? "default" : "ghost"}
+                      className={`w-full justify-start ${
+                        activeTab === tab.id
+                          ? "bg-green-600 hover:bg-green-700 text-white"
+                          : "text-gray-300 hover:bg-gray-800"
+                      }`}
+                    >
+                      <Icon name={tab.icon as any} size={16} className="mr-2" />
+                      {tab.name}
+                    </Button>
                   ))}
                 </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-white">Дилер</Label>
-                  <Select value={currentRound.dealer} onValueChange={(value) => setCurrentRound(prev => ({ ...prev, dealer: value }))}>
-                    <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                      <SelectValue placeholder="Выберите дилера" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-600">
-                      {currentGame.players.map((player) => (
-                        <SelectItem key={player} value={player} className="text-white">
-                          {player}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-white">Комбинация</Label>
-                  <Select value={currentRound.combination} onValueChange={(value) => setCurrentRound(prev => ({ ...prev, combination: value }))}>
-                    <SelectTrigger className="bg-gray-800 border-gray-600 text-white">
-                      <SelectValue placeholder="Выберите комбинацию" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-600">
-                      {["Пара", "Две пары", "Тройка", "Стрит", "Флеш", "Фулл хаус", "Каре", "Стрит флеш", "Роял флеш"].map((combo) => (
-                        <SelectItem key={combo} value={combo} className="text-white">
-                          {combo}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-white">Комментарий</Label>
-                  <Textarea
-                    value={currentRound.comment}
-                    onChange={(e) => setCurrentRound(prev => ({ ...prev, comment: e.target.value }))}
-                    placeholder="Добавьте комментарий к раунду..."
-                    className="bg-gray-800 border-gray-600 text-white"
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
-            <Button 
-              onClick={addRound}
-              disabled={currentRound.winners.length === 0 || !currentRound.dealer || !currentRound.combination}
-              className="mt-4 bg-green-600 hover:bg-green-700"
-            >
-              Добавить раунд
-            </Button>
-          </div>
-
-          {/* Recent Rounds */}
-          <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
-            <h3 className="text-white text-lg font-semibold mb-4">Последние раунды</h3>
-            <div className="space-y-3">
-              {currentGame.rounds.slice(-5).reverse().map((round, index) => (
-                <div key={round.id} className="bg-gray-800 rounded-lg p-4 border border-gray-600">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">
-                      Раунд #{currentGame.rounds.length - index}
-                    </span>
-                    <span className="text-gray-400 text-xs">
-                      {round.timestamp.toLocaleTimeString('ru', {hour: '2-digit', minute: '2-digit'})}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-400">Победители:</p>
-                      <p className="text-white">{round.winners.join(', ')}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Дилер:</p>
-                      <p className="text-white">{round.dealer}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Комбинация:</p>
-                      <p className="text-white">{round.combination}</p>
-                    </div>
-                  </div>
-                  {round.comment && (
-                    <p className="text-gray-300 text-sm mt-2">{round.comment}</p>
-                  )}
-                </div>
+            {/* Десктопное меню */}
+            <div className="hidden md:flex border-b border-gray-700">
+              {tabs.map((tab) => (
+                <Button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  variant="ghost"
+                  className={`rounded-none border-b-2 ${
+                    activeTab === tab.id
+                      ? "border-green-500 text-green-500 bg-gray-800"
+                      : "border-transparent text-gray-300 hover:bg-gray-800"
+                  }`}
+                >
+                  <Icon name={tab.icon as any} size={16} className="mr-2" />
+                  {tab.name}
+                </Button>
               ))}
+            </div>
+
+            {/* Контент вкладок */}
+            <div className="p-6">
+              {activeTab === "настройки" && (
+                <GameSettingsTab 
+                  gameSettings={gameSettings}
+                  setGameSettings={setGameSettings}
+                  updateGameSettings={updateGameSettings}
+                  timerRunning={timerRunning}
+                  setTimerRunning={setTimerRunning}
+                  newPlayerName={newPlayerName}
+                  setNewPlayerName={setNewPlayerName}
+                  addPlayerToGame={addPlayerToGame}
+                  gameTimer={gameTimer}
+                  setGameTimer={setGameTimer}
+                />
+              )}
+
+              {activeTab === "закупы" && (
+                <BuyInsTab 
+                  selectedForBuyIn={selectedForBuyIn}
+                  setSelectedForBuyIn={setSelectedForBuyIn}
+                  buyInAmounts={buyInAmounts}
+                  setBuyInAmounts={setBuyInAmounts}
+                  addBuyIns={addBuyIns}
+                  currentGame={currentGame}
+                />
+              )}
+
+              {activeTab === "раунд" && (
+                <RoundTab 
+                  currentRound={currentRound}
+                  setCurrentRound={setCurrentRound}
+                  addRound={addRound}
+                  currentGame={currentGame}
+                />
+              )}
+
+              {activeTab === "итоги" && (
+                <ResultsTab 
+                  finalChips={finalChips}
+                  setFinalChips={setFinalChips}
+                  showResults={showResults}
+                  calculateResults={calculateResults}
+                  finishGame={finishGame}
+                  currentGame={currentGame}
+                />
+              )}
             </div>
           </div>
         </div>
       </div>
     );
   };
+
+  // Компоненты вкладок
+  const GameSettingsTab = ({ gameSettings, setGameSettings, updateGameSettings, timerRunning, setTimerRunning, newPlayerName, setNewPlayerName, addPlayerToGame, gameTimer, setGameTimer }: any) => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h3 className="text-white text-lg font-semibold">Настройки игры</h3>
+          
+          <div>
+            <Label className="text-white">Название игры</Label>
+            <Input
+              value={gameSettings.name}
+              onChange={(e) => setGameSettings(prev => ({ ...prev, name: e.target.value }))}
+              className="bg-gray-800 border-gray-600 text-white"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-white">Малый блайнд</Label>
+              <Input
+                type="number"
+                value={gameSettings.smallBlind}
+                onChange={(e) => setGameSettings(prev => ({ ...prev, smallBlind: Number(e.target.value) }))}
+                className="bg-gray-800 border-gray-600 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-white">Большой блайнд</Label>
+              <Input
+                type="number"
+                value={gameSettings.bigBlind}
+                onChange={(e) => setGameSettings(prev => ({ ...prev, bigBlind: Number(e.target.value) }))}
+                className="bg-gray-800 border-gray-600 text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-white">Стартовый стек</Label>
+              <Input
+                type="number"
+                value={gameSettings.startingStack}
+                onChange={(e) => setGameSettings(prev => ({ ...prev, startingStack: Number(e.target.value) }))}
+                className="bg-gray-800 border-gray-600 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-white">Фишка к рублю</Label>
+              <Input
+                type="number"
+                value={gameSettings.chipToRuble}
+                onChange={(e) => setGameSettings(prev => ({ ...prev, chipToRuble: Number(e.target.value) }))}
+                className="bg-gray-800 border-gray-600 text-white"
+              />
+            </div>
+          </div>
+
+          <Button onClick={updateGameSettings} className="bg-green-600 hover:bg-green-700">
+            Сохранить настройки
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-white text-lg font-semibold">Управление игрой</h3>
+          
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-white font-medium">Таймер игры</span>
+              <div className="text-white text-2xl font-mono">{formatTime(gameTimer)}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setTimerRunning(!timerRunning)}
+                className={timerRunning ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}
+              >
+                <Icon name={timerRunning ? "Pause" : "Play"} size={16} className="mr-2" />
+                {timerRunning ? "Пауза" : "Старт"}
+              </Button>
+              <Button
+                onClick={() => setGameTimer(0)}
+                variant="outline"
+                className="border-gray-600 text-gray-300 hover:bg-gray-800"
+              >
+                <Icon name="RotateCcw" size={16} className="mr-2" />
+                Сброс
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+            <h4 className="text-white font-medium mb-3">Добавить игрока</h4>
+            <div className="flex gap-2">
+              <Input
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                placeholder="Имя игрока"
+                className="bg-gray-700 border-gray-600 text-white"
+                onKeyPress={(e) => e.key === 'Enter' && addPlayerToGame()}
+              />
+              <Button onClick={addPlayerToGame} className="bg-green-600 hover:bg-green-700">
+                <Icon name="Plus" size={16} />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const BuyInsTab = ({ selectedForBuyIn, setSelectedForBuyIn, buyInAmounts, setBuyInAmounts, addBuyIns, currentGame }: any) => (
+    <div className="space-y-6">
+      <h3 className="text-white text-lg font-semibold">Управление закупами</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <Label className="text-white mb-3 block">Выберите игроков для закупа</Label>
+          <div className="space-y-3">
+            {currentGame.players.map((player: string) => (
+              <div key={player} className="flex items-center justify-between bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    checked={selectedForBuyIn.includes(player)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedForBuyIn([...selectedForBuyIn, player]);
+                        setBuyInAmounts(prev => ({ ...prev, [player]: currentGame.startingStack }));
+                      } else {
+                        setSelectedForBuyIn(selectedForBuyIn.filter(p => p !== player));
+                        setBuyInAmounts(prev => {
+                          const newAmounts = { ...prev };
+                          delete newAmounts[player];
+                          return newAmounts;
+                        });
+                      }
+                    }}
+                  />
+                  <span className="text-white font-medium">{player}</span>
+                </div>
+                <div className="text-sm text-gray-400">
+                  Закупы: {currentGame.buyins[player] || 0}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-white mb-3 block">Сумма закупа для каждого</Label>
+          <div className="space-y-3">
+            {selectedForBuyIn.map((player: string) => (
+              <div key={player} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white font-medium">{player}</span>
+                  <span className="text-sm text-gray-400">
+                    в рублях: {((buyInAmounts[player] || currentGame.startingStack) * currentGame.chipToRuble).toFixed(0)}
+                  </span>
+                </div>
+                <Input
+                  type="number"
+                  value={buyInAmounts[player] || currentGame.startingStack}
+                  onChange={(e) => setBuyInAmounts(prev => ({ ...prev, [player]: Number(e.target.value) }))}
+                  className="bg-gray-700 border-gray-600 text-white"
+                  placeholder="Количество фишек"
+                />
+              </div>
+            ))}
+          </div>
+          
+          {selectedForBuyIn.length > 0 && (
+            <Button onClick={addBuyIns} className="mt-4 w-full bg-green-600 hover:bg-green-700">
+              Добавить закупы ({selectedForBuyIn.length} игр.)
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const RoundTab = ({ currentRound, setCurrentRound, addRound, currentGame }: any) => (
+    <div className="space-y-6">
+      <h3 className="text-white text-lg font-semibold">Управление раундами</h3>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+          <h4 className="text-white font-medium mb-4">Добавить новый раунд</h4>
+          
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white mb-2 block">Победители</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {currentGame.players.map((player: string) => (
+                  <div key={player} className="flex items-center space-x-2">
+                    <Checkbox
+                      checked={currentRound.winners.includes(player)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setCurrentRound(prev => ({ ...prev, winners: [...prev.winners, player] }));
+                        } else {
+                          setCurrentRound(prev => ({ ...prev, winners: prev.winners.filter(w => w !== player) }));
+                        }
+                      }}
+                    />
+                    <label className="text-white text-sm cursor-pointer">{player}</label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-white">Дилер</Label>
+              <Select value={currentRound.dealer} onValueChange={(value) => setCurrentRound(prev => ({ ...prev, dealer: value }))}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите дилера" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {currentGame.players.map((player: string) => (
+                    <SelectItem key={player} value={player} className="text-white">{player}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white">Комбинация</Label>
+              <Select value={currentRound.combination} onValueChange={(value) => setCurrentRound(prev => ({ ...prev, combination: value }))}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите комбинацию" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-700 border-gray-600">
+                  {["Пара", "Две пары", "Тройка", "Стрит", "Флеш", "Фулл хаус", "Каре", "Стрит флеш", "Роял флеш"].map((combo) => (
+                    <SelectItem key={combo} value={combo} className="text-white">{combo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-white">Комментарий</Label>
+              <Textarea
+                value={currentRound.comment}
+                onChange={(e) => setCurrentRound(prev => ({ ...prev, comment: e.target.value }))}
+                placeholder="Комментарий к раунду..."
+                className="bg-gray-700 border-gray-600 text-white"
+              />
+            </div>
+
+            <Button 
+              onClick={addRound}
+              disabled={currentRound.winners.length === 0 || !currentRound.dealer || !currentRound.combination}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              Добавить раунд
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+          <h4 className="text-white font-medium mb-4">История раундов</h4>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {currentGame.rounds.slice().reverse().map((round: Round, index: number) => (
+              <div key={round.id} className="bg-gray-700 rounded-lg p-3 border border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">
+                    Раунд #{currentGame.rounds.length - index}
+                  </span>
+                  <span className="text-gray-400 text-xs">
+                    {round.timestamp.toLocaleTimeString('ru', {hour: '2-digit', minute: '2-digit'})}
+                  </span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div><span className="text-gray-400">Победители:</span> <span className="text-white">{round.winners.join(', ')}</span></div>
+                  <div><span className="text-gray-400">Дилер:</span> <span className="text-white">{round.dealer}</span></div>
+                  <div><span className="text-gray-400">Комбинация:</span> <span className="text-white">{round.combination}</span></div>
+                  {round.comment && (
+                    <div><span className="text-gray-400">Комментарий:</span> <span className="text-gray-300">{round.comment}</span></div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ResultsTab = ({ finalChips, setFinalChips, showResults, calculateResults, finishGame, currentGame }: any) => (
+    <div className="space-y-6">
+      <h3 className="text-white text-lg font-semibold">Подсчет итогов игры</h3>
+      
+      {!showResults ? (
+        <div className="space-y-4">
+          <p className="text-gray-400">Введите финальное количество фишек для каждого игрока:</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {currentGame.players.map((player: string) => (
+              <div key={player} className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white font-medium">{player}</span>
+                  <span className="text-sm text-gray-400">
+                    Закупы: {currentGame.buyins[player] || 0}
+                  </span>
+                </div>
+                <Input
+                  type="number"
+                  value={finalChips[player] || ""}
+                  onChange={(e) => setFinalChips(prev => ({ ...prev, [player]: Number(e.target.value) }))}
+                  placeholder="Финальные фишки"
+                  className="bg-gray-700 border-gray-600 text-white"
+                />
+              </div>
+            ))}
+          </div>
+
+          <Button 
+            onClick={finishGame}
+            disabled={Object.keys(finalChips).length !== currentGame.players.length || Object.values(finalChips).some(v => v < 0)}
+            className="w-full bg-red-600 hover:bg-red-700"
+          >
+            Закончить игру и подсчитать результат
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+            <h4 className="text-white font-medium mb-4">Итоговая таблица</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-600">
+                    <th className="text-left text-gray-400 pb-2">Игрок</th>
+                    <th className="text-right text-gray-400 pb-2">Закупы</th>
+                    <th className="text-right text-gray-400 pb-2">Фишки</th>
+                    <th className="text-right text-gray-400 pb-2">Рубли</th>
+                    <th className="text-right text-gray-400 pb-2">Финал фишки</th>
+                    <th className="text-right text-gray-400 pb-2">Финал рубли</th>
+                    <th className="text-right text-gray-400 pb-2">Выигрыш/Проигрыш</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calculateResults().map((result: any) => (
+                    <tr key={result.player} className="border-b border-gray-700">
+                      <td className="text-white py-2">{result.player}</td>
+                      <td className="text-right text-white py-2">{result.buyInCount}</td>
+                      <td className="text-right text-white py-2">{result.buyInChips}</td>
+                      <td className="text-right text-white py-2">{result.buyInRubles.toFixed(0)}</td>
+                      <td className="text-right text-white py-2">{result.finalChips}</td>
+                      <td className="text-right text-white py-2">{result.finalRubles.toFixed(0)}</td>
+                      <td className={`text-right py-2 font-bold ${
+                        result.profit > 0 ? 'text-green-400' : result.profit < 0 ? 'text-red-400' : 'text-gray-400'
+                      }`}>
+                        {result.profit > 0 ? '+' : ''}{result.profit.toFixed(0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // Dashboard View - обновленный с плашками игроков
   const DashboardView = () => {

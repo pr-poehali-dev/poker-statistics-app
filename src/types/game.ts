@@ -4,6 +4,14 @@ export interface Player {
   name: string;
   createdAt: string;
   updatedAt: string;
+  // Статистика игрока
+  totalGames: number;
+  totalWins: number;
+  winRate: number;
+  favoriteCombination: string;
+  bestDealer: string;
+  totalBuyIns: number;
+  totalBuyInChips: number;
 }
 
 export interface GameRound {
@@ -62,6 +70,7 @@ export interface GameAPI {
 // Локальное состояние приложения (до подключения backend)
 export interface AppState {
   games: Game[];
+  players: Player[];
   currentGame: Game | null;
-  currentView: "lobby" | "admin" | "dashboard";
+  currentView: "lobby" | "admin" | "dashboard" | "create-game" | "manage-players";
 }

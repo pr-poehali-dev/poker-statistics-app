@@ -15,6 +15,17 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ChartContainer, ChartConfig } from "@/components/ui/chart";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import Icon from "@/components/ui/icon";
 
 // Game data interface
@@ -756,6 +767,50 @@ const Index = () => {
   const DashboardView = () => {
     if (!currentGame) return null;
 
+    // Получаем статистику победителей
+    const getWinnerStats = () => {
+      const winCounts: { [key: string]: number } = {};
+      currentGame.rounds.forEach(round => {
+        round.winners.forEach(winner => {
+          winCounts[winner] = (winCounts[winner] || 0) + 1;
+        });
+      });
+      
+      return Object.entries(winCounts)
+        .map(([name, wins]) => ({
+          name,
+          wins,
+          percentage: currentGame.rounds.length > 0 ? Math.round((wins / currentGame.rounds.length) * 100) : 0
+        }))
+        .sort((a, b) => b.wins - a.wins);
+    };
+
+    // Получаем статистику комбинаций
+    const getCombinationStats = () => {
+      const combinationCounts: { [key: string]: number } = {};
+      currentGame.rounds.forEach(round => {
+        combinationCounts[round.combination] = (combinationCounts[round.combination] || 0) + 1;
+      });
+      
+      const colors = ['#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#84cc16', '#6366f1', '#f97316'];
+      
+      return Object.entries(combinationCounts)
+        .map(([name, value], index) => ({
+          name,
+          value,
+          color: colors[index % colors.length],
+          percentage: currentGame.rounds.length > 0 ? Math.round((value / currentGame.rounds.length) * 100) : 0
+        }))
+        .sort((a, b) => b.value - a.value);
+    };
+
+    const winnerStats = getWinnerStats();
+    const combinationStats = getCombinationStats();
+    const chartConfig: ChartConfig = {
+      wins: { label: "Победы", color: "#10b981" },
+      combination: { label: "Комбинация", color: "#10b981" }
+    };
+
     return (
       <div className="min-h-screen" style={{backgroundColor: '#000000'}}>
         <div className="max-w-7xl mx-auto p-6">
@@ -787,16 +842,15 @@ const Index = () => {
           <h2 className="text-white text-3xl font-bold mb-8">Dashboard</h2>
 
           {/* Общая статистика */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm mb-1">Всего фишек</p>
-                  <p className="text-white text-2xl font-bold">{(currentGame.players.length * currentGame.startingStack / 1000).toFixed(1)}K</p>
-                  <p className="text-green-400 text-xs">{(currentGame.players.length * currentGame.startingStack * currentGame.chipToRuble).toFixed(0)} Р</p>
+                  <p className="text-gray-400 text-sm mb-1">Игроков</p>
+                  <p className="text-white text-2xl font-bold">{currentGame.players.length}</p>
                 </div>
                 <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
-                  <Icon name="Trophy" size={16} className="text-white" />
+                  <Icon name="Users" size={16} className="text-white" />
                 </div>
               </div>
             </div>
@@ -816,9 +870,20 @@ const Index = () => {
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
+                  <p className="text-gray-400 text-sm mb-1">Блайнды</p>
+                  <p className="text-white text-2xl font-bold">{currentGame.smallBlind}/{currentGame.bigBlind}</p>
+                </div>
+                <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
+                  <Icon name="Coins" size={16} className="text-white" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div>
                   <p className="text-gray-400 text-sm mb-1">Время игры</p>
                   <p className="text-white text-2xl font-bold">{formatTime(gameTimer)}</p>
-                  <p className="text-gray-400 text-xs">Блайнды: {currentGame.smallBlind}/{currentGame.bigBlind}</p>
                 </div>
                 <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
                   <Icon name="Clock" size={16} className="text-white" />
@@ -827,47 +892,110 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Плашки по игрокам */}
+          {/* Графики */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* Топ победителей */}
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon name="Crown" size={20} className="text-yellow-500" />
+                <h3 className="text-white text-lg font-semibold">Топ победителей</h3>
+              </div>
+              {winnerStats.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={winnerStats}>
+                      <XAxis dataKey="name" stroke="#9ca3af" />
+                      <YAxis stroke="#9ca3af" />
+                      <Bar
+                        dataKey="wins"
+                        fill="#10b981"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <p className="text-gray-400 text-center py-20">
+                  Нет данных о раундах
+                </p>
+              )}
+            </div>
+
+            {/* Топ комбинаций */}
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center gap-2 mb-6">
+                <Icon name="Star" size={20} className="text-green-500" />
+                <h3 className="text-white text-lg font-semibold">Топ комбинаций</h3>
+              </div>
+              {combinationStats.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={combinationStats}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        dataKey="value"
+                        label={({ name, percentage }) => `${name} (${percentage}%)`}
+                      >
+                        {combinationStats.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <p className="text-gray-400 text-center py-20">
+                  Нет данных о комбинациях
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Плашки по игрокам - компактные */}
           <div className="mb-8">
             <h3 className="text-white text-xl font-semibold mb-4">Статистика игроков</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               {currentGame.players.map((playerName) => {
                 const stats = getPlayerGameStats(playerName);
                 if (!stats) return null;
                 
                 return (
-                  <div key={playerName} className="bg-gray-900 rounded-lg p-6 border border-gray-700">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-                        <Icon name="User" size={16} className="text-white" />
+                  <div key={playerName} className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                        <Icon name="User" size={12} className="text-white" />
                       </div>
-                      <div>
-                        <h4 className="text-white font-semibold">{playerName}</h4>
-                        <p className="text-gray-400 text-sm">{stats.winRate}% побед</p>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-white font-medium text-sm truncate">{playerName}</h4>
+                        <p className="text-green-400 text-xs">{stats.winRate}% побед</p>
                       </div>
                     </div>
                     
-                    <div className="space-y-3">
+                    <div className="space-y-2 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-gray-400">Победы в раундах:</span>
+                        <span className="text-gray-400">Победы:</span>
                         <span className="text-white font-bold">{stats.wins}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-400">Лучший дилер:</span>
-                        <span className="text-green-400 text-sm">{stats.bestDealer}</span>
+                        <span className="text-gray-400">Закупы:</span>
+                        <span className="text-white">{stats.buyIns}</span>
                       </div>
                       <div>
-                        <span className="text-gray-400">Любимая комбинация:</span>
-                        <p className="text-white text-sm">{stats.favoriteCombination}</p>
+                        <span className="text-gray-400">Дилер:</span>
+                        <p className="text-green-400 text-xs truncate">{stats.bestDealer}</p>
                       </div>
-                      <div className="border-t border-gray-700 pt-3">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Закупы:</span>
-                          <span className="text-white">{stats.buyIns}</span>
-                        </div>
+                      <div>
+                        <span className="text-gray-400">Комбинация:</span>
+                        <p className="text-white text-xs truncate">{stats.favoriteCombination}</p>
+                      </div>
+                      <div className="border-t border-gray-700 pt-2">
                         <div className="flex justify-between">
                           <span className="text-gray-400">Фишки:</span>
-                          <span className="text-white">{stats.buyInChips}</span>
+                          <span className="text-white text-xs">{stats.buyInChips}</span>
                         </div>
                       </div>
                     </div>
